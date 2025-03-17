@@ -49,8 +49,57 @@ function init() {
         keys[e.key] = false;
     });
     
+    // Add on-screen control buttons event listeners
+    setupControlButtons();
+    
     // Start game loop
     gameLoop();
+}
+
+// Setup on-screen control buttons
+function setupControlButtons() {
+    const upBtn = document.getElementById('up-btn');
+    const downBtn = document.getElementById('down-btn');
+    const leftBtn = document.getElementById('left-btn');
+    const rightBtn = document.getElementById('right-btn');
+    
+    // Helper function to handle both touch and mouse events
+    function addButtonListeners(button, keyCode) {
+        // Mouse events
+        button.addEventListener('mousedown', () => {
+            keys[keyCode] = true;
+        });
+        
+        button.addEventListener('mouseup', () => {
+            keys[keyCode] = false;
+        });
+        
+        button.addEventListener('mouseleave', () => {
+            keys[keyCode] = false;
+        });
+        
+        // Touch events for mobile
+        button.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // Prevent scrolling
+            keys[keyCode] = true;
+        });
+        
+        button.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            keys[keyCode] = false;
+        });
+        
+        button.addEventListener('touchcancel', (e) => {
+            e.preventDefault();
+            keys[keyCode] = false;
+        });
+    }
+    
+    // Add listeners to each direction button
+    addButtonListeners(upBtn, 'ArrowUp');
+    addButtonListeners(downBtn, 'ArrowDown');
+    addButtonListeners(leftBtn, 'ArrowLeft');
+    addButtonListeners(rightBtn, 'ArrowRight');
 }
 
 // Game loop
@@ -66,7 +115,7 @@ function update() {
     
     let newX = player.x;
     let newY = player.y;
-    const moveSpeed = 4; // Pixels per frame
+    const moveSpeed = 6; // Pixels per frame
     
     // Handle arrow key movement
     if (keys['ArrowUp'] || keys['w']) {
