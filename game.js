@@ -166,6 +166,9 @@ function update() {
     player.y = newY;
     player.z = newY + TILE_SIZE * 1.5; // Update z-index based on player's feet position
     
+    // Check if player is on water
+    player.isOnWater = isPlayerOnWater();
+    
     // Check if we need to generate new chunks
     checkAndGenerateChunks();
     
@@ -186,7 +189,8 @@ function initializePlayer() {
         x: 0,
         y: 0,
         z: 15, // Y-sorting based on bottom position
-        color: '#FF0000' // Red
+        color: '#FF0000', // Red
+        isOnWater: false // Flag to track if player is on water
     };
 }
 
@@ -195,6 +199,26 @@ function getChunkKey(x, y) {
     const chunkX = Math.floor(x / (CHUNK_SIZE * TILE_SIZE));
     const chunkY = Math.floor(y / (CHUNK_SIZE * TILE_SIZE));
     return `${chunkX},${chunkY}`;
+}
+
+// Check if player is on water tile
+function isPlayerOnWater() {
+    if (!player) return false;
+    
+    // Get the chunk key for the player's position
+    const chunkKey = getChunkKey(player.x, player.y);
+    const chunk = chunks.get(chunkKey);
+    
+    if (!chunk) return false;
+    
+    // Check if any water tile overlaps with the player's position
+    return chunk.some(obj => {
+        return obj.type === 'water' && 
+               player.x >= obj.x && 
+               player.x < obj.x + TILE_SIZE && 
+               player.y >= obj.y && 
+               player.y < obj.y + TILE_SIZE;
+    });
 }
 
 // Generate initial chunks around player
@@ -452,11 +476,40 @@ function generateChunk(chunkX, chunkY) {
         }
     }
     
-    // Generate rocks randomly
+    // Generate small grass elements scattered throughout the chunk
     for (let y = 0; y < CHUNK_SIZE; y++) {
         for (let x = 0; x < CHUNK_SIZE; x++) {
             const worldX = chunkX * CHUNK_SIZE * TILE_SIZE + x * TILE_SIZE;
             const worldY = chunkY * CHUNK_SIZE * TILE_SIZE + y * TILE_SIZE;
+            
+            if (seededRandom() < 0.05) { // 5% chance for small grass elements
+                // Check if this position already has water or a tree
+                const hasObjectAtPosition = chunkObjects.some(obj => 
+                    (obj.type === 'water' || obj.type === 'tree') && 
+                    obj.x === worldX && obj.y === worldY
+                );
+                
+                if (!hasObjectAtPosition) {
+                    // Create small grass element with pivot at base for Y-sorting
+                    const grassHeight = TILE_SIZE * (0.3 + seededRandom() * 0.4); // 30-70% of tile size
+                    const grassWidth = TILE_SIZE * (0.2 + seededRandom() * 0.3); // 20-50% of tile size
+                    const pivotX = worldX + TILE_SIZE/2 + (seededRandom() * TILE_SIZE/2 - TILE_SIZE/4);
+                    const pivotY = worldY + TILE_SIZE; // Bottom of the tile (base of grass)
+                    
+                    chunkObjects.push({
+                        type: 'small_grass',
+                        pivotX: pivotX,
+                        pivotY: pivotY,
+                        x: pivotX - grassWidth/2,
+                        y: pivotY - grassHeight,
+                        z: worldY + TILE_SIZE, // Z-index at grass base for Y-sorting
+                        width: grassWidth,
+                        height: grassHeight,
+                        color: getSmallGrassColor(),
+                        variation: 0.8 + seededRandom() * 0.4 // Slight variation in appearance
+                    });
+                }
+            }
             
             if (seededRandom() < 0.02) { // 2% chance for rocks
                 // Check if this position already has water or a tree
@@ -610,6 +663,14 @@ function getTreeColor() {
 function getRockColor() {
     const shade = Math.floor(100 + seededRandom() * 80);
     return `rgb(${shade}, ${shade}, ${shade})`;
+}
+
+function getSmallGrassColor() {
+    // Create slightly different colors from the main grass
+    const r = Math.floor(50 + seededRandom() * 20);
+    const g = Math.floor(150 + seededRandom() * 40);
+    const b = Math.floor(50 + seededRandom() * 20);
+    return `rgb(${r}, ${g}, ${b})`;
 }
 
 // Drawing functions
@@ -780,6 +841,22 @@ function render() {
                 // This is for backward compatibility with existing chunks
                 break;
                 
+            case 'small_grass':
+                // Draw small grass element with slight swaying animation
+                ctx.fillStyle = obj.color;
+                
+                // Create a swaying effect based on time
+                const swayAmount = Math.sin(Date.now() / 1000 + obj.x) * 2 * obj.variation;
+                
+                // Draw a simple grass blade shape
+                ctx.beginPath();
+                ctx.moveTo(obj.x, obj.y + obj.height); // Base left
+                ctx.lineTo(obj.x + obj.width/2 + swayAmount, obj.y); // Tip
+                ctx.lineTo(obj.x + obj.width, obj.y + obj.height); // Base right
+                ctx.closePath();
+                ctx.fill();
+                break;
+                
             case 'rock':
                 ctx.fillStyle = obj.color;
                 ctx.beginPath();
@@ -828,17 +905,54 @@ function render() {
             case 'player':
                 // Only draw the player if they haven't been rendered by a tree
                 if (!playerRenderedByTree) {
-                    // Draw player body
-                    ctx.fillStyle = obj.color;
-                    ctx.fillRect(obj.x - TILE_SIZE/3, obj.y - TILE_SIZE/2, TILE_SIZE*2/3, TILE_SIZE);
+                    // Get water color if player is on water
+                    let waterColor = null;
+                    if (obj.isOnWater) {
+                        // Find the water tile the player is on to get its color
+                        const chunkKey = getChunkKey(obj.x, obj.y);
+                        const chunk = chunks.get(chunkKey);
+                        if (chunk) {
+                            const waterTile = chunk.find(tile => 
+                                tile.type === 'water' && 
+                                obj.x >= tile.x && 
+                                obj.x < tile.x + TILE_SIZE && 
+                                obj.y >= tile.y && 
+                                obj.y < tile.y + TILE_SIZE
+                            );
+                            if (waterTile) {
+                                waterColor = waterTile.color;
+                            }
+                        }
+                        
+                        // If no specific water tile found, use a default water color
+                        if (!waterColor) {
+                            waterColor = 'rgb(40, 130, 220)';
+                        }
+                    }
                     
-                    // Draw player head
+                    // Draw player head (always above water)
+                    ctx.fillStyle = obj.color;
                     ctx.fillRect(obj.x - TILE_SIZE/2, obj.y - TILE_SIZE, TILE_SIZE, TILE_SIZE);
                     
                     // Draw player eyes
                     ctx.fillStyle = '#FFFFFF';
                     ctx.fillRect(obj.x - TILE_SIZE/3, obj.y - TILE_SIZE*0.8, TILE_SIZE/6, TILE_SIZE/6);
                     ctx.fillRect(obj.x + TILE_SIZE/6, obj.y - TILE_SIZE*0.8, TILE_SIZE/6, TILE_SIZE/6);
+                    
+                    // Draw player body
+                    if (obj.isOnWater) {
+                        // Draw top half of body with player color
+                        ctx.fillStyle = obj.color;
+                        ctx.fillRect(obj.x - TILE_SIZE/3, obj.y - TILE_SIZE/2, TILE_SIZE*2/3, TILE_SIZE/2);
+                        
+                        // Draw bottom half of body with water color (swimming effect)
+                        ctx.fillStyle = waterColor;
+                        ctx.fillRect(obj.x - TILE_SIZE/3, obj.y, TILE_SIZE*2/3, TILE_SIZE/2);
+                    } else {
+                        // Draw normal body when not in water
+                        ctx.fillStyle = obj.color;
+                        ctx.fillRect(obj.x - TILE_SIZE/3, obj.y - TILE_SIZE/2, TILE_SIZE*2/3, TILE_SIZE);
+                    }
                 }
                 break;
         }
