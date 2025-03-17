@@ -1,8 +1,8 @@
 // Game constants
 const TILE_SIZE = 32;
 const CHUNK_SIZE = 32; // Size of each chunk in tiles
-const CANVAS_WIDTH = 1200;
-const CANVAS_HEIGHT = 1000;
+let CANVAS_WIDTH = 1200;
+let CANVAS_HEIGHT = 800;
 const BUILDING_COLORS = ['#8B4513', '#A0522D', '#CD853F', '#D2691E', '#B22222', '#8B0000', '#4B0082'];
 const BUILDING_WINDOW_COLORS = ['#87CEEB', '#ADD8E6', '#B0E0E6', '#AFEEEE', '#F0FFFF'];
 const BUILDING_DOOR_COLORS = ['#8B4513', '#A52A2A', '#800000', '#4B0082', '#2F4F4F'];
@@ -18,6 +18,7 @@ let canvas;
 let ctx;
 let seedDisplay;
 let regenerateBtn;
+let chunkDisplay; // Element to display current chunk coordinates
 
 // Initialize the game
 function init() {
@@ -25,6 +26,14 @@ function init() {
     ctx = canvas.getContext('2d');
     seedDisplay = document.getElementById('seed-display');
     regenerateBtn = document.getElementById('regenerate-btn');
+    
+    // Set canvas dimensions based on container size
+    resizeCanvas();
+    
+    // Create chunk display element
+    chunkDisplay = document.createElement('div');
+    chunkDisplay.id = 'chunk-display';
+    document.getElementById('ui-overlay').appendChild(chunkDisplay);
     
     seedDisplay.textContent = `Seed: ${seed}`;
     initializePlayer();
@@ -37,6 +46,7 @@ function init() {
         seedDisplay.textContent = `Seed: ${seed}`;
         chunks.clear();
         generateInitialChunks();
+        updateChunkDisplay(); // Update chunk display after regenerating
         render();
     });
     
@@ -52,8 +62,28 @@ function init() {
     // Add on-screen control buttons event listeners
     setupControlButtons();
     
+    // Add resize event listener
+    window.addEventListener('resize', () => {
+        resizeCanvas();
+        render();
+    });
+    
     // Start game loop
     gameLoop();
+}
+
+// Function to resize canvas based on container size
+function resizeCanvas() {
+    const container = document.getElementById('game-container');
+    CANVAS_WIDTH = container.clientWidth;
+    CANVAS_HEIGHT = container.clientHeight;
+    
+    canvas.width = CANVAS_WIDTH;
+    canvas.height = CANVAS_HEIGHT;
+    
+    // Update canvas rendering properties after resize
+    ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false; // Keep pixel art crisp
 }
 
 // Setup on-screen control buttons
@@ -138,6 +168,9 @@ function update() {
     
     // Check if we need to generate new chunks
     checkAndGenerateChunks();
+    
+    // Update chunk display
+    updateChunkDisplay();
 }
 
 // Seeded random function
@@ -175,6 +208,16 @@ function generateInitialChunks() {
             generateChunk(x, y);
         }
     }
+}
+
+// Update the chunk display with current player chunk coordinates
+function updateChunkDisplay() {
+    if (!player || !chunkDisplay) return;
+    
+    const playerChunkX = Math.floor(player.x / (CHUNK_SIZE * TILE_SIZE));
+    const playerChunkY = Math.floor(player.y / (CHUNK_SIZE * TILE_SIZE));
+    
+    chunkDisplay.textContent = `Chunk: ${playerChunkX}, ${playerChunkY}`;
 }
 
 // Check and generate new chunks as needed
