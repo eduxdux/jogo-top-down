@@ -6,6 +6,10 @@ let CANVAS_HEIGHT = 800;
 const BUILDING_COLORS = ['#8B4513', '#A0522D', '#CD853F', '#D2691E', '#B22222', '#8B0000', '#4B0082'];
 const BUILDING_WINDOW_COLORS = ['#87CEEB', '#ADD8E6', '#B0E0E6', '#AFEEEE', '#F0FFFF'];
 const BUILDING_DOOR_COLORS = ['#8B4513', '#A52A2A', '#800000', '#4B0082', '#2F4F4F'];
+const DAY_NIGHT_CYCLE_DURATION = 100000; // 5 minutes per cycle
+const NIGHT_OVERLAY_COLOR = '#261357';
+let gameStartTime = Date.now();
+let timeDisplay; // Element to display game time
 
 // Game variables
 let seed = Math.floor(Math.random() * 1000000);
@@ -34,6 +38,12 @@ function init() {
     chunkDisplay = document.createElement('div');
     chunkDisplay.id = 'chunk-display';
     document.getElementById('ui-overlay').appendChild(chunkDisplay);
+    
+    // Create time display element
+    timeDisplay = document.createElement('div');
+    timeDisplay.id = 'time-display';
+    timeDisplay.style.marginTop = '10px';
+    document.getElementById('ui-overlay').appendChild(timeDisplay);
     
     seedDisplay.textContent = `Seed: ${seed}`;
     initializePlayer();
@@ -140,8 +150,26 @@ function gameLoop() {
 }
 
 // Update game state
+// Calculate game time based on cycle
+function calculateGameTime() {
+    const elapsedTime = (Date.now() - gameStartTime) % DAY_NIGHT_CYCLE_DURATION;
+    const dayProgress = elapsedTime / DAY_NIGHT_CYCLE_DURATION;
+    
+    // Convert to 24-hour format starting at 6:00
+    const hours = Math.floor((dayProgress * 24 + 6) % 24);
+    const minutes = Math.floor((dayProgress * 24 * 60) % 60);
+    
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+}
+
 function update() {
     if (!player) return;
+    
+    // Update time display
+    if (timeDisplay) {
+        const gameTime = calculateGameTime();
+        timeDisplay.textContent = `Horário: ${gameTime}`;
+    }
     
     let newX = player.x;
     let newY = player.y;
@@ -878,6 +906,22 @@ function render() {
                     const floorY = obj.y + floor * TILE_SIZE + windowSpacing;
                     for (let wx = obj.x + windowSpacing; wx < obj.x + obj.width - windowSize; wx += TILE_SIZE) {
                         ctx.fillRect(wx, floorY, windowSize, windowSize);
+                        
+                        // Add window light effect during night
+                        const elapsedTime = (Date.now() - gameStartTime) % DAY_NIGHT_CYCLE_DURATION;
+                        const dayProgress = elapsedTime / DAY_NIGHT_CYCLE_DURATION;
+                        const hours = Math.floor((dayProgress * 24 + 6) % 24);
+                        
+                        if (hours >= 18 || hours < 6) {
+                            const gradient = ctx.createRadialGradient(
+                                wx + windowSize/2, floorY + windowSize/2, 0,
+                                wx + windowSize/2, floorY + windowSize/2, TILE_SIZE
+                            );
+                            gradient.addColorStop(0, 'rgba(255, 255, 200, 0.3)');
+                            gradient.addColorStop(1, 'rgba(255, 255, 200, 0)');
+                            ctx.fillStyle = gradient;
+                            ctx.fillRect(wx - TILE_SIZE/2, floorY - TILE_SIZE/2, TILE_SIZE*2, TILE_SIZE*2);
+                        }
                     }
                 }
                 
@@ -963,6 +1007,46 @@ function render() {
     
     // Restore camera transform
     ctx.restore();
+    
+    // Apply day/night cycle overlay
+    const cycleTime = (Date.now() - gameStartTime) % DAY_NIGHT_CYCLE_DURATION;
+    const dayProgress = cycleTime / DAY_NIGHT_CYCLE_DURATION;
+    const timeOfDay = (dayProgress * 24 + 6) % 24;
+    
+    // Calculate night intensity based on time of day
+    let nightIntensity = 0;
+    if (timeOfDay >= 18) {
+        nightIntensity = (timeOfDay - 18) / 6; // Gradually get darker from 18:00 to 00:00
+    } else if (timeOfDay < 5) {
+        nightIntensity = 1; // Maximum darkness between 00:00 and 06:00
+    } else if (timeOfDay < 11) {
+        nightIntensity = 1 - ((timeOfDay - 5) / 5); // Gradually get lighter from 06:00 to 12:00
+    }
+    
+    const overlayOpacity = Math.min(0.85, nightIntensity); // Max opacity 85%
+    
+    // Create a gradient mask for the player's light
+    if (player && nightIntensity > 0) {
+        // Create a circular gradient around the player
+        const lightRadius = TILE_SIZE * 6; // Aumentado para uma área maior de iluminação
+        const gradient = ctx.createRadialGradient(
+            player.x - cameraX, player.y - cameraY, 0,
+            player.x - cameraX, player.y - cameraY, lightRadius
+        );
+        
+        // Ajusta o gradiente para uma transição mais suave
+        gradient.addColorStop(0, 'rgba(0, 0, 0, 0)'); // Centro totalmente transparente
+        gradient.addColorStop(0.1, `rgba(0, 0, 0, ${overlayOpacity * 0.2})`); // Transição suave inicial
+        gradient.addColorStop(0.3, `rgba(0, 0, 0, ${overlayOpacity * 0.6})`); // Transição suave inicial
+        gradient.addColorStop(0.5, `rgba(0, 0, 0, ${overlayOpacity * 0.8})`); // Meio termo
+        gradient.addColorStop(1, `rgba(0, 0, 0, ${overlayOpacity})`); // Borda com opacidade total
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    } else {
+        ctx.fillStyle = `${NIGHT_OVERLAY_COLOR}${Math.floor(overlayOpacity * 255).toString(16).padStart(2, '0')}`;
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    }
 }
 
 // Initialize the game when the window loads
